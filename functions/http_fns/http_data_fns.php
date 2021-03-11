@@ -1,15 +1,6 @@
 <?php
 
 
-// -- AUTH -- \\
-
-// generates a login token
-function get_login_token($user_id)
-{
-    return $user_id . '-' . random_str(30);
-}
-
-
 // -- SERVER -- \\
 
 // gets a variable from $_GET array, or default if it doesn't exist
@@ -81,19 +72,20 @@ function is_trusted_ref()
         }
     }
 
-    return false;
+    return check_local();
 }
 
 
 // checks for trusted ref, throws an exception if not
 function require_trusted_ref($action = 'perform this action', $mod = false)
 {
-    if (!is_trusted_ref() && $mod === false) {
-        $err = 'It looks like you\'re using PR2 from a third-party website. '.
-            "For security reasons, you may only $action from an approved site such as pr2hub.com.";
-        throw new Exception($err);
-    } elseif (!is_trusted_ref() && $mod === true) {
-        $err = "Incorrect Referrer. $action";
+    if (!is_trusted_ref()) {
+        if ($mod === true) {
+            $err = "Incorrect Referrer. $action";
+        } elseif ($mod === false) {
+            $err = 'It looks like you\'re using PR2 from a third-party website. '.
+                "For security reasons, you may only $action from an approved site such as pr2hub.com.";
+        }
         throw new Exception(trim($err));
     }
 }
@@ -134,14 +126,15 @@ function send_email($from, $to, $subject, $body)
  * @return object
  * @return string
  */
-function http_get_contents($url)
+function http_get_contents($url, $headers = [])
 {
     // init and set options
     $ch = curl_init();
     $opts = array(
         CURLOPT_TIMEOUT => 5,
         CURLOPT_URL => $url,
-        CURLOPT_RETURNTRANSFER => true
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => $headers
     );
 
     // apply options and process request
@@ -226,7 +219,7 @@ function check_value($value, $check_for, $yes = 'yes', $no = 'no')
 // checks if an email address is valid
 function valid_email($email)
 {
-    return filter_var($email, FILTER_VALIDATE_EMAIL) ? true : false;
+    return filter_var($email, FILTER_VALIDATE_EMAIL);
 }
 
 
@@ -266,6 +259,33 @@ function format_level_list($levels)
     }
 
     return json_encode($ret);
+}
+
+
+/**
+ * Format a vault item for easy handling.
+ *
+ * @param string url The URL to query.
+ *
+ * @return object
+ * @return string
+ */
+function format_vault_item($item)
+{
+    unset($item->active, $item->placement);
+    $item->price = (int) $item->price;
+
+    // sale
+    $sale = new stdClass();
+    $sale->active = (bool) (int) $item->sale;
+    if ($sale->active) {
+        $sale->value = (int) $item->sale_value;
+        $sale->expires = (int) $item->sale_expires;
+    }
+    $item->sale = $sale;
+    unset($item->sale_value, $item->sale_expires);
+
+    return $item;
 }
 
 

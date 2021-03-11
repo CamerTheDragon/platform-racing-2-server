@@ -26,6 +26,11 @@ try {
     $header = true;
     output_header('IP Info', $staff->mod, $staff->admin);
 
+    // check for trial mod
+    if ($staff->trial) {
+        throw new Exception('You lack the power to access this resource.');
+    }
+
     // we can dance if we want to, we can leave your friends behind
     $html_ip = htmlspecialchars($ip, ENT_QUOTES);
 
@@ -45,7 +50,7 @@ try {
     }
 
     // get IP info
-    $ip_geo = http_get_contents($IP_API_LINK_2 . $ip);
+    $ip_geo = http_get_contents($IP_API_LINK_2 . $ip, ['User-Agent: keycdn-tools:https://pr2hub.com']);
     if ($ip_geo !== false) {
         $ip_geo = json_decode($ip_geo);
     }

@@ -47,9 +47,13 @@ function pass_login($pdo, $name, $password, $ban_check_scope = 'b')
 // log in with a token
 function token_login($pdo, $use_cookie = true, $suppress_error = false, $ban_check_scope = 'b')
 {
+    global $user_token;
+
     $rec_token = find_no_cookie('token');
     if (isset($rec_token) && !empty($rec_token)) {
         $token = $rec_token;
+    } elseif (isset($user_token) && !empty($user_token)) {
+        $token = $user_token;
     } elseif ($use_cookie && isset($_COOKIE['token']) && !empty($_COOKIE['token'])) {
         $token = $_COOKIE['token'];
     }
@@ -217,14 +221,10 @@ function award_part($pdo, $user_id, $type, $part_id)
     }
 
     // determine where in the array our value was found
-    $is_epic = array_search($type, $part_types) >= 4 ? true : false;
+    $is_epic = array_search($type, $part_types) >= 4;
 
     // get existing parts
-    if ($is_epic === true) {
-        $data = epic_upgrades_select($pdo, $user_id, true);
-    } else {
-        $data = pr2_select($pdo, $user_id, true);
-    }
+    $data = $is_epic ? epic_upgrades_select($pdo, $user_id, true) : pr2_select($pdo, $user_id, true);
     $field = type_to_db_field($type);
     $str_array = $data !== false ? $data->{$field} : '';
 
@@ -252,7 +252,7 @@ function award_part($pdo, $user_id, $type, $part_id)
     $new_field_str = join(",", $part_array);
 
     // award part
-    if ($is_epic === true) {
+    if ($is_epic) {
         epic_upgrades_update_field($pdo, $user_id, $type, $new_field_str); // inserts if not present
     } else {
         pr2_update_part_array($pdo, $user_id, $type, $new_field_str);
@@ -297,10 +297,12 @@ function award_exp($pdo, int $user_id, int $exp_points, bool $from_cron = false,
         throw new Exception('The user is online. We\'ll try this again later.');
     } else {
         $data = pr2_select_rank_progress($pdo, $user_id);
-        $exp_to_rank = exp_required_for_ranking($data->rank + 1);
+        $data->rank -= $data->tokens; // remove tokens from base rank update
+        $exp_to_rank = exp_required_for_ranking($data->rank + 1); // total exp needed between current rank and next one
+        $exp_remaining_to_rank = $exp_to_rank - $data->exp; // exp needed for ranking w/ player's current exp points
 
         // handle ranking
-        $original_exp = $exp_points;
+        $prize_exp = $exp_points;
         while ($data->exp + $exp_points > $exp_to_rank) {
             // if this will make the user's exp negative, break
             if ($exp_points - $exp_remaining_to_rank < 0) {
@@ -316,11 +318,11 @@ function award_exp($pdo, int $user_id, int $exp_points, bool $from_cron = false,
             $exp_remaining_to_rank = $exp_to_rank = exp_required_for_ranking($data->rank + 1);
         }
 
-        $data->exp += $exp_points; // add remaining exp to the new value
-        $data->rank -= $data->tokens; // remove tokens from base rank update
+        // add remaining exp to the new value
+        $data->exp += $exp_points;
 
         pr2_update_rank($pdo, $user_id, $data->rank, $data->exp);
-        part_awards_delete($pdo, $user_id, 'exp', $original_exp);
+        part_awards_delete($pdo, $user_id, 'exp', $prize_exp);
 
         if ($from_spec_parts) {
             return $data;
@@ -409,7 +411,7 @@ function award_special_parts($stats, $group, $prizes)
         }
 
         $db_field = type_to_db_field($award->type);
-        $epic = strpos($award->type, 'e') === 0 ? true : false;
+        $epic = strpos($award->type, 'e') === 0;
         $base_type = $epic === true ? strtolower(substr($award->type, 1)) : $award->type;
         $part = (int) $award->part;
 
@@ -458,7 +460,7 @@ function has_part($pdo, $user_id, $type, $part_id)
     }
 
     // determine where in the array our value was found
-    $is_epic = array_search($type, $part_types) >= 4 ? true : false;
+    $is_epic = array_search($type, $part_types) >= 4;
 
     // perform query
     $field = type_to_db_field($type);
@@ -481,7 +483,7 @@ function has_part($pdo, $user_id, $type, $part_id)
     $parts_arr = explode(",", $parts_str);
 
     // search for part ID in array
-    return in_array($part_id, $parts_arr) ? true : false;
+    return in_array($part_id, $parts_arr);
 }
 
 
@@ -637,9 +639,10 @@ function is_staff($pdo, $user_id, $check_ref = true, $exception = false, $group 
 
     if ($user_id !== false && $user_id !== 0) {
         // determine power and if staff
-        $power = (int) user_select_power($pdo, $user_id, true);
-        $is_mod = ($power >= 2);
-        $is_admin = ($power === 3);
+        $power = explode(',', user_select_power($pdo, $user_id, true));
+        $is_trial = (bool) (int) $power[1];
+        $is_mod = $power[0] >= 2;
+        $is_admin = $power[0] == 3;
 
         // exception handler
         if ($exception === true && ($is_mod === false || ($group > 2 && $is_admin === false))) {
@@ -648,8 +651,9 @@ function is_staff($pdo, $user_id, $check_ref = true, $exception = false, $group 
     }
 
     // tell the world
-    $return = new stdClass();
-    $return->mod = $is_mod;
-    $return->admin = $is_admin;
-    return $return;
+    $ret = new stdClass();
+    $ret->trial = $is_trial;
+    $ret->mod = $is_mod;
+    $ret->admin = $is_admin;
+    return $ret;
 }

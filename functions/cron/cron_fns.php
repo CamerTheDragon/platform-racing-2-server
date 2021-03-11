@@ -109,7 +109,7 @@ function write_server_status($pdo)
 
 function get_recent_pms($pdo)
 {
-    $file = COMMON_DIR . '/cron/last-pm.txt';
+    $file = CACHE_DIR . '/last-pm.txt';
 
     // get the last message id that a notifacation was sent for
     $last_message_id = file_get_contents($file);
@@ -307,9 +307,9 @@ function ensure_awards($pdo)
         $user_id = (int) $row->user_id;
         try {
             if ($type !== 'exp') {
-                award_part($pdo, $user_id, $type, $part, true);
+                award_part($pdo, $user_id, $type, $part);
             } else {
-                award_exp($pdo, $user_id, $part);
+                award_exp($pdo, $user_id, $part, true);
             }
             echo "user_id: $user_id, type: $type, part: $part \n";
         } catch (Exception $e) {

@@ -190,6 +190,9 @@ class ChatMessage
         } elseif (($msg === '/hh' || strpos($msg, '/hh ') === 0)) {
             $this->commandHappyHour(); // happy hour-related functions (start/stop, status)
             $handled = true;
+        } elseif ($msg === '/perks' || $msg === '/rentals') {
+            $this->commandPerks(); // get remaining time for vault part rentals (perks)
+            $handled = true;
         } elseif ($msg === '/pop' || $msg === '/population') {
             $this->commandPopulation(); // get current server population
             $handled = true;
@@ -852,6 +855,28 @@ class ChatMessage
     }
 
 
+    // gets the active vault perks
+    private function commandPerks()
+    {
+        $str = '';
+        $items = TemporaryItems::getStatus($this->player->user_id, $this->player->guild_id);
+        foreach ($items as $item) {
+            $prize = Prizes::find($item->type, $item->part_id);
+            if (!empty($prize)) {
+                $part_name = $prize->getFullName();
+                $exp_time = \format_duration($item->expire_time - time());
+                $str .= "<br> - $part_name: $exp_time";
+            }
+        }
+        if ($str !== '') {
+            $str = "Your rented parts will be active for approximately another:<br>$str";
+        } else {
+            $str = 'You don\'t have any rented parts right now. Why not visit the Vault of Magics?';
+        }
+        $this->write("systemChat`$str");
+    }
+
+
     // gets the current server population
     private function commandPopulation()
     {
@@ -897,8 +922,7 @@ class ChatMessage
                     $this->write("systemChat`Error: $err $err_supl");
                 }
             }
-        } // if not the server owner, limit their ability to checking the status of a tournament only
-        else {
+        } else { // if not the server owner, limit their ability to checking the status of a tournament only
             if ($msg_lower === '/t status' || $msg_lower === '/t' || $msg_lower === '/tournament') {
                 tournament_status($this->player);
             } else {
@@ -1050,6 +1074,7 @@ class ChatMessage
                 '- /pm *player*<br>'.
                 '- /hint (Artifact)<br>'.
                 '- /hh status<br>'.
+                '- /rentals (Vault)<br>'.
                 '- /t status<br>'.
                 '- /population<br>'.
                 '- /beawesome<br>'.
@@ -1057,7 +1082,7 @@ class ChatMessage
                 '- /guides<br>'.
                 '- /community<br>'.
                 '- /contests<br>'.
-                '- /updates'.$mod.$effects.$admin.$server_owner);
+                '- /updates<br>'.$mod.$effects.$admin.$server_owner);
         }
     }
 
